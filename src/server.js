@@ -78,7 +78,7 @@ easyrtc.events.on("roomCreate", function(appObj, creatorConnectionObj, roomName,
 
 easyrtc.events.on("authenticate", function(socket, easyrtcid, appName, username, credential, easyrtcAuthMessage, next){
     console.log('AUTH appName='+appName+ ' username='+username + ' token='+credential['token']);
-  if (appName == "korelineWebRtc" && username != "Akus"){
+  if (appName != "koreline"){
     next(new easyrtc.util.ConnectionError("Failed our private auth."));
   }
   else {
