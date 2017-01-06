@@ -1,22 +1,31 @@
-// Load required modules
-var http    = require("http");              // http server core module
-var express = require("express");           // web framework external module
-//var serveStatic = require('serve-static');  // serve static files
-var socketIo = require("socket.io");        // web socket external module
-var easyrtc = require("easyrtc");               // EasyRTC external module
+var http    = require("http");             
+var express = require("express");          
+var socketIo = require("socket.io");        
+var easyrtc = require("easyrtc");
+var pg = require("pg");
 
-// Set process name
-process.title = "node-easyrtc";
+process.title = "koreline-easyrtc";
 
-// Setup and configure Express http server. Expect a subfolder called "static" to be the web root.
 var app = express();
-//app.use(serveStatic('static', {'index': ['index.html']}));
-
-// Start Express http server on port 8080
 var webServer = http.createServer(app).listen(8080);
-
-// Start Socket.io so it attaches itself to Express server
 var socketServer = socketIo.listen(webServer, {"log level":1});
+
+var config = {
+    user: 'akus', //env var: PGUSER
+    database: 'koreline', //env var: PGDATABASE
+    password: '12345678', //env var: PGPASSWORD
+    host: 'localhost', // Server hosting the postgres database
+    port: 5432, //env var: PGPORT
+    max: 10, // max number of clients in the pool
+    idleTimeoutMillis: 30000, // how long a client is allowed to remain idle before being closed
+};
+
+//var client = new pg.Client(config);
+var pool = new pg.Pool(config);
+
+pool.on('error', function (err, client) {
+    console.error('idle client error', err.message, err.stack)
+});
 
 //easyrtc.setOption("logLevel", "debug");
 
@@ -49,15 +58,6 @@ easyrtc.events.on("easyrtcAuth", function(socket, easyrtcid, msg, socketCallback
 
 //To test, lets print the credential to the console for every room join!
 easyrtc.events.on("roomJoin", function(connectionObj, roomName, roomParameter, callback) {
-    console.log("["+connectionObj.getEasyrtcid()+"] Credential retrieved!", connectionObj.getFieldValueSync("credential"));
-
-    //Sprawdzam czy ten uczen jest juz w jakims pokoju
-    //console.log('connectionObj.rooms='+connectionObj.getRoomNames);
-    console.log('connectionObj.username='+connectionObj.getUsername());
-    
-    if (connectionObj.getRoomNames.length) {
-
-    }
 
     easyrtc.events.defaultListeners.roomJoin(connectionObj, roomName, roomParameter, callback);
 });
@@ -74,26 +74,34 @@ easyrtc.events.on("roomCreate", function(appObj, creatorConnectionObj, roomName,
 
 });
 
-//MOJE END
 
 easyrtc.events.on("authenticate", function(socket, easyrtcid, appName, username, credential, easyrtcAuthMessage, next){
-    console.log('AUTH appName='+appName+ ' username='+username + ' token='+credential['token']);
-  if (appName != "koreline"){
-    next(new easyrtc.util.ConnectionError("Failed our private auth."));
-  }
-  else {
-    next(null);
-  }
+
+    pool.connect(function(err, client, done) {
+        if(err) {
+            return console.error('error fetching client from pool', err);
+        }
+        client.query('SELECT user_id FROM authtoken_token WHERE key=$1::text', [credential['token']], function(err, result) {
+            done();
+
+            if(err) {
+                return console.error('error running query', err);
+            }
+            if (result.rows.length) {
+                console.log('Uzytkownik autoryzowany');
+                next(null);
+            } else {
+                next(new easyrtc.util.ConnectionError("Failed auth."));
+            }
+        });
+    });
+
 });
 
-
-// Start EasyRTC server
 var rtc = easyrtc.listen(app, socketServer, null, function(err, rtcRef) {
     console.log("Initiated");
 });
 
-
-//listen on port 8080
 webServer.listen(8080, function () {
-    console.log('listening on http://localhost:8080');
+    console.log('Listening on http://localhost:8080');
 });
