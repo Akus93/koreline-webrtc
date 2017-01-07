@@ -3,97 +3,212 @@ var express = require("express");
 var socketIo = require("socket.io");        
 var easyrtc = require("easyrtc");
 var pg = require("pg");
+var redis = require("redis");
 
 process.title = "koreline-easyrtc";
+
+process.on('uncaughtException', function (err) {
+    console.error(err);
+});
 
 var app = express();
 var webServer = http.createServer(app).listen(8080);
 var socketServer = socketIo.listen(webServer, {"log level":1});
 
-var config = {
-    user: 'akus', //env var: PGUSER
-    database: 'koreline', //env var: PGDATABASE
-    password: '12345678', //env var: PGPASSWORD
-    host: 'localhost', // Server hosting the postgres database
-    port: 5432, //env var: PGPORT
-    max: 10, // max number of clients in the pool
-    idleTimeoutMillis: 30000, // how long a client is allowed to remain idle before being closed
+//REDIS
+var redisConfig = {
+    host: 'pub-redis-14529.eu-central-1-1.1.ec2.redislabs.com',
+    port: 14529,
+    password: '12345678'
 };
 
-//var client = new pg.Client(config);
-var pool = new pg.Pool(config);
+var redisClient = redis.createClient(redisConfig);
 
-pool.on('error', function (err, client) {
-    console.error('idle client error', err.message, err.stack)
+redisClient.on("error", function (error) {
+    console.error("Redis error", error);
 });
+
+redisClient.on("connect", function () {
+   console.log('Connected to redis server.');
+});
+
+//REDIS END
+
+
+//POSTGRESQL
+
+var postgresqlConfig = {
+    user: 'akus',
+    database: 'koreline',
+    password: '12345678',
+    host: 'localhost',
+    port: 5432,
+};
+
+var postgreClient = new pg.Client(postgresqlConfig);
+
+postgreClient.on('error', function(error) {
+    console.error('PostgreSQL Client Error', error);
+});
+
+postgreClient.connect();
+
+//POSTGRESQL END
 
 //easyrtc.setOption("logLevel", "debug");
 
 //MY SETTINGS
+
+var iceServers = [
+    {"url": "stun:stun.l.google.com:19302"},
+    {
+        "url":"turn:numb.viagenie.ca:3478",
+        "username":"dawid.rdzanek@gmail.com",
+        "credential":"IIuuqya3"
+    }
+];
+
+easyrtc.setOption("appIceServers", iceServers);
 easyrtc.setOption("roomAutoCreateEnable", true);
 easyrtc.setOption("roomDefaultEnable", true);
 
-// Overriding the default easyrtcAuth listener, only so we can directly access its callback
-easyrtc.events.on("easyrtcAuth", function(socket, easyrtcid, msg, socketCallback, callback) {
-    easyrtc.events.defaultListeners.easyrtcAuth(socket, easyrtcid, msg, socketCallback, function(err, connectionObj){
-        if (err || !msg.msgData || !msg.msgData.credential || !connectionObj) {
-            callback(err, connectionObj);
-            return;
+
+easyrtc.events.on("disconnect", function (connectionObj, next) {
+    console.log('ON DISCONNECT EVENT');
+    redisClient.del(connectionObj.getEasyrtcid());
+    console.log('Remove data about ' + connectionObj.getEasyrtcid() + ' from redis.');
+    easyrtc.events.defaultListeners.disconnect(connectionObj, next);
+});
+
+
+easyrtc.events.on("roomLeave", function (connectionObj, roomName, next) {
+
+    console.log('ON ROOM LEAVE EVENT');
+
+    let app = connectionObj.getApp();
+    app.room(roomName, function (error, room) {
+        if (error)
+            console.error(error);
+        else {
+            room.getConnectionObjects(function(error, connections) {
+               for (let connection of connections) {
+                   easyrtc.events.emit(
+                       "emitEasyrtcMsg",
+                       connection,
+                       "roomLeave",
+                       { msgData: ''},
+                       null,
+                       function(err) {
+                           console.log("Send message about roomLeave to "+ connection.getEasyrtcid());
+                       }
+                   );
+               }
+            });
         }
+    });
 
-        connectionObj.setField("credential", msg.msgData.credential, {"isShared":false});
-        connectionObj.setCredential(msg.msgData.credential, function (err) {
-            if (err)
-                console.log(err);
-        });
+    console.log('User ' + connectionObj.getEasyrtcid() + ' leave room ' + roomName);
+
+    easyrtc.events.defaultListeners.roomLeave(connectionObj, roomName, next);
+});
 
 
-            //connectionObj.setCredential(msg.msgData.credential);
+easyrtc.events.on("roomJoin", function(connectionObj, roomName, roomParameter, callback) {
 
-        console.log("["+easyrtcid+"] Credential saved!", connectionObj.getFieldValueSync("credential"));
+    console.log('ON ROOM JOIN EVENT');
 
-        callback(err, connectionObj);
+    redisClient.hgetall(connectionObj.getEasyrtcid(), function (error, obj) {
+        if (error)
+            console.error('Error from redis', error);
+        else {
+
+            let query =
+                'SELECT "auth_user"."username" AS teacher, U."username" AS student ' +
+                'FROM "koreline_room" ' +
+                'INNER JOIN "koreline_lesson" ON ("koreline_room"."lesson_id" = "koreline_lesson"."id") ' +
+                'INNER JOIN "koreline_userprofile" ON ("koreline_lesson"."teacher_id" = "koreline_userprofile"."id") ' +
+                'INNER JOIN "auth_user" ON ("koreline_userprofile"."user_id" = "auth_user"."id") ' +
+                'INNER JOIN "koreline_userprofile" UP ON ("koreline_room"."student_id" = UP."id") ' +
+                'INNER JOIN "auth_user" U ON (UP."user_id" = U."id") ' +
+                'WHERE "koreline_room"."key" = $1::text';
+
+            postgreClient.query(query, [obj['room']], function (err, result) {
+
+                if (err) throw err;
+
+                if (result.rows.length && (result.rows[0]['teacher'] == obj['username'] || result.rows[0]['student'] == obj['username'])) {
+                    console.log('User ' + obj['username'] + ' can join room ' + obj['room']);
+                    easyrtc.events.defaultListeners.roomJoin(connectionObj, roomName, roomParameter, callback);
+                }
+                else
+                    console.error('User ' + obj['username'] + ' can not join room ' + obj['room'] + '!');
+            });
+        }
     });
 });
 
-//To test, lets print the credential to the console for every room join!
-easyrtc.events.on("roomJoin", function(connectionObj, roomName, roomParameter, callback) {
 
-    easyrtc.events.defaultListeners.roomJoin(connectionObj, roomName, roomParameter, callback);
+easyrtc.events.on("onShutdown", function(next) {
+    console.log('onShutdown fired!');
+    redisClient.quit();
+    //postgreClient.end();
+    easyrtc.events.defaultListeners.onShutdown(next);
 });
 
 
-//MOJE
 easyrtc.events.on("roomCreate", function(appObj, creatorConnectionObj, roomName, roomOptions, callback) {
+    console.log('roomCreate event for ' + roomName);
 
+    if (creatorConnectionObj) {
 
-    //TODO sprawdza w bazie czy to nauczyciel
-    //console.log('[TWORZE POKÓJ] if:'+creatorConnectionObj.getEasyrtcid());
+        redisClient.hgetall(creatorConnectionObj.getEasyrtcid(), function (error, obj) {
+            if (error) {
+                console.error('Error from redis', error);
+            }
+            else {
+                let query =
+                    'SELECT "auth_user"."username" AS teacher ' +
+                    'FROM "koreline_room" ' +
+                    'INNER JOIN "koreline_lesson" ON ("koreline_room"."lesson_id" = "koreline_lesson"."id") ' +
+                    'INNER JOIN "koreline_userprofile" ON ("koreline_lesson"."teacher_id" = "koreline_userprofile"."id") ' +
+                    'INNER JOIN "auth_user" ON ("koreline_userprofile"."user_id" = "auth_user"."id") ' +
+                    'WHERE "koreline_room"."key" = $1::text';
 
-    easyrtc.events.defaultListeners.roomCreate(appObj, creatorConnectionObj, roomName, roomOptions, callback);
-
+                postgreClient.query(query, [obj['room']])
+                    .then(result => {
+                        if (result.rows.length && result.rows[0]['teacher'] == obj['username']) {
+                            console.log('User ' + obj['username'] + ' can create room ' + obj['room']);
+                            easyrtc.events.defaultListeners.roomCreate(appObj, creatorConnectionObj, roomName, roomOptions, callback);
+                        }
+                        else {
+                            console.error('User ' + obj['username'] + ' can not create room ' + obj['room'] + '!');
+                        }
+                    });
+            }
+        });
+    }
+    else {
+        easyrtc.events.defaultListeners.roomCreate(appObj, creatorConnectionObj, roomName, roomOptions, callback);
+    }
 });
 
 
 easyrtc.events.on("authenticate", function(socket, easyrtcid, appName, username, credential, easyrtcAuthMessage, next){
 
-    pool.connect(function(err, client, done) {
-        if(err) {
-            return console.error('error fetching client from pool', err);
-        }
-        client.query('SELECT user_id FROM authtoken_token WHERE key=$1::text', [credential['token']], function(err, result) {
-            done();
+    postgreClient.query('SELECT U.username FROM authtoken_token T, auth_user U WHERE T.key=$1::text AND U.id = T.user_id', [credential['token']], function (err, result) {
+        if (err) throw err;
 
-            if(err) {
-                return console.error('error running query', err);
-            }
-            if (result.rows.length) {
-                console.log('Uzytkownik autoryzowany');
-                next(null);
-            } else {
-                next(new easyrtc.util.ConnectionError("Failed auth."));
-            }
-        });
+        if (result.rows.length) {
+            redisClient.HMSET(easyrtcid, {
+                username: result.rows[0]['username'],
+                room: credential['room']
+            });
+            console.log('Save credentials about ' + easyrtcid + '[' +  result.rows[0]['username'] + '] to redis database.');
+            next(null);
+        }
+        else {
+            next(new easyrtc.util.ConnectionError("Failed auth."));
+        }
     });
 
 });
