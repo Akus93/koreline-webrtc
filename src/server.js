@@ -51,7 +51,7 @@ var postgresqlConfig = {
     database: 'desvgmv1blsmmo',
     password: '76b3111574cb410167f8271ff33a97e94188fb282dc1c51d54fe8c24e3f12aba',
     host: 'ec2-54-221-217-158.compute-1.amazonaws.com',
-    port: 3306,
+    port: 5432,
 };  
 
 var postgreClient = new pg.Client(postgresqlConfig);
