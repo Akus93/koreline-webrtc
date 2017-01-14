@@ -5,14 +5,15 @@ var easyrtc = require("easyrtc");
 var pg = require("pg");
 var redis = require("redis");
 
-process.title = "koreline-easyrtc";
+//process.title = "koreline-easyrtc";
 
 process.on('uncaughtException', function (err) {
     console.error(err);
 });
 
+var port = process.env.PORT || 3000;
 var app = express();
-var webServer = http.createServer(app).listen(8080);
+var webServer = http.createServer(app).listen(port);
 var socketServer = socketIo.listen(webServer, {"log level":1});
 
 //REDIS
@@ -37,11 +38,19 @@ redisClient.on("connect", function () {
 
 //POSTGRESQL
 
+// var postgresqlConfig = {
+//     user: 'akus',
+//     database: 'koreline',
+//     password: '12345678',
+//     host: 'localhost',
+//     port: 5432,
+// };
+
 var postgresqlConfig = {
-    user: 'akus',
-    database: 'koreline',
-    password: '12345678',
-    host: 'localhost',
+    user: 'koreline',
+    database: 'koreline$koreline',
+    password: 'dawidrdzanek123',
+    host: 'koreline.mysql.pythonanywhere-services.com',
     port: 5432,
 };
 
