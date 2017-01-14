@@ -226,6 +226,6 @@ var rtc = easyrtc.listen(app, socketServer, null, function(err, rtcRef) {
     console.log("Initiated");
 });
 
-webServer.listen(8080, function () {
+webServer.listen(port, function () {
     console.log('Listening on port ' + port);
 });
