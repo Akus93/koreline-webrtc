@@ -47,12 +47,12 @@ redisClient.on("connect", function () {
 // };
 
 var postgresqlConfig = {
-    user: 'koreline',
-    database: 'koreline$koreline',
-    password: 'dawidrdzanek123',
-    host: 'koreline.mysql.pythonanywhere-services.com',
-    port: 5432,
-};
+    user: 'aqdihmvwjmjopg',
+    database: 'desvgmv1blsmmo',
+    password: '76b3111574cb410167f8271ff33a97e94188fb282dc1c51d54fe8c24e3f12aba',
+    host: 'ec2-54-221-217-158.compute-1.amazonaws.com',
+    port: 3306,
+};  
 
 var postgreClient = new pg.Client(postgresqlConfig);
 
