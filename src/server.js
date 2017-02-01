@@ -5,13 +5,13 @@ var easyrtc = require("easyrtc");
 var pg = require("pg");
 var redis = require("redis");
 
-//process.title = "koreline-easyrtc";
+process.title = "koreline-easyrtc";
 
 process.on('uncaughtException', function (err) {
     console.error(err);
 });
 
-var port = process.env.PORT || 3000;
+var port = 8080 || process.env.PORT || 3000;
 var app = express();
 var webServer = http.createServer(app).listen(port);
 var socketServer = socketIo.listen(webServer, {"log level":1});
@@ -38,21 +38,21 @@ redisClient.on("connect", function () {
 
 //POSTGRESQL
 
-// var postgresqlConfig = {
-//     user: 'akus',
-//     database: 'koreline',
-//     password: '12345678',
-//     host: 'localhost',
-//     port: 5432,
-// };
-
 var postgresqlConfig = {
-    user: 'aqdihmvwjmjopg',
-    database: 'desvgmv1blsmmo',
-    password: '76b3111574cb410167f8271ff33a97e94188fb282dc1c51d54fe8c24e3f12aba',
-    host: 'ec2-54-221-217-158.compute-1.amazonaws.com',
+    user: 'akus',
+    database: 'koreline',
+    password: '12345678',
+    host: 'localhost',
     port: 5432,
-};  
+};
+
+// var postgresqlConfig = {
+//     user: 'aqdihmvwjmjopg',
+//     database: 'desvgmv1blsmmo',
+//     password: '76b3111574cb410167f8271ff33a97e94188fb282dc1c51d54fe8c24e3f12aba',
+//     host: 'ec2-54-221-217-158.compute-1.amazonaws.com',
+//     port: 5432,
+// };  
 
 var postgreClient = new pg.Client(postgresqlConfig);
 
@@ -123,8 +123,6 @@ easyrtc.events.on("roomLeave", function (connectionObj, roomName, next) {
 
 
 easyrtc.events.on("roomJoin", function(connectionObj, roomName, roomParameter, callback) {
-
-    console.log('ON ROOM JOIN EVENT');
 
     redisClient.hgetall(connectionObj.getEasyrtcid(), function (error, obj) {
         if (error)
