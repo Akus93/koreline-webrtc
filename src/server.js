@@ -18,7 +18,7 @@ var socketServer = socketIo.listen(webServer, {"log level":1});
 
 //REDIS
 var redisConfig = {
-    host: 'pub-redis-14529.eu-central-1-1.1.ec2.redislabs.com',
+    host: 'localhost',
     port: 14529,
     password: '12345678'
 };
@@ -46,14 +46,6 @@ var postgresqlConfig = {
     port: 5432,
 };
 
-// var postgresqlConfig = {
-//     user: 'aqdihmvwjmjopg',
-//     database: 'desvgmv1blsmmo',
-//     password: '76b3111574cb410167f8271ff33a97e94188fb282dc1c51d54fe8c24e3f12aba',
-//     host: 'ec2-54-221-217-158.compute-1.amazonaws.com',
-//     port: 5432,
-// };  
-
 var postgreClient = new pg.Client(postgresqlConfig);
 
 postgreClient.on('error', function(error) {
@@ -72,8 +64,8 @@ var iceServers = [
     {"url": "stun:stun.l.google.com:19302"},
     {
         "url":"turn:numb.viagenie.ca:3478",
-        "username":"dawid.rdzanek@gmail.com",
-        "credential":"IIuuqya3"
+        "username":"******",
+        "credential":"*******"
     }
 ];
 
